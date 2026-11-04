@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>学习桌面</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/icon-512.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#13191c" />
+    <meta name="application-name" content="学习桌面" />
+    <meta name="apple-mobile-web-app-title" content="学习桌面" />
+    <script>
+      // 先于样式表决定主题，避免首帧闪一下
+      (function () {
+        try {
+          var m = localStorage.getItem("sde.theme") || "dark";
+          var light =
+            m === "light" ||
+            (m === "auto" && window.matchMedia("(prefers-color-scheme: light)").matches);
+          var el = document.documentElement;
+          el.classList.toggle("light", light);
+          el.classList.toggle("dark", !light);
+          el.style.colorScheme = light ? "light" : "dark";
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

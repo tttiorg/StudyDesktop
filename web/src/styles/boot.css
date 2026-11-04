@@ -1,0 +1,998 @@
+/* ============================================================
+   启动转场 + 主页入场动画
+   ------------------------------------------------------------
+   这两个动画都挂在外壳层（App.vue），不在 Home.vue：
+     放 Home.vue 的话，每次从别的页面切回主页都会重播一遍，很烦。
+     挂在 App 上就是「一次启动走一次」。
+
+   两个阶段：
+     B. 启动转场   —— 深空网格 -> 品牌描边 -> 进度条 -> 双闸门劈开
+     C. 主页入场   —— 顶栏从左侧滑入、右栏从顶部落下、内容逐层展开
+
+   数据加载期间不设门槛：动画按固定时间轴跑，跑完就露界面。
+   万一数据还没回来，各板块会显示自己的「暂无内容」，不会卡住。
+
+   转场专用色 --boot-* 直接定义在这里，不从 theme.css 取：
+   它比页面底色更黑，才能做出「从深空亮起」的感觉。
+   ============================================================ */
+
+/* 转场专用色。注意不要压得太黑 —— 实测 #070a0c 时整个前半段
+   97% 像素都在最低亮度档，视觉上像卡住了，所以抬到 #0b1215。 */
+:root,
+html.dark {
+  --boot-void: #0b1215;
+  --boot-grid: rgba(18, 204, 216, 0.30);
+  --boot-glow: rgba(18, 204, 216, 0.72);
+}
+
+html.light {
+  --boot-void: #0b1418;
+  --boot-grid: rgba(14, 148, 160, 0.2);
+  --boot-glow: rgba(14, 148, 160, 0.5);
+}
+
+/* ============================================================
+   B. 启动转场层
+   ------------------------------------------------------------
+   时序（总长约 3.27s，可被点击/按键跳过）：
+     0.00  网格 / 气辉 / 光环渐入
+     0.30  品牌字逐字浮现（间隔 90ms）
+     0.85  进度条开始填充 + 文案轮换
+     2.05  进度条走满 —— 数字读的是条子真实宽度，此刻必然 100%
+     2.05  走满回调触发 .opening 劈开（不是定时器估的）
+     2.51  页面亮起（劈开 460ms 后）
+     2.81  整层淡出（挡板 0.72s 刚好走完）
+     3.27  节点移除，转场结束
+   所有动画都用 CSS，JS 只负责加 class 和收尾移除节点。
+   播放由 localStorage 控制，一整个会话只播一次（详见 composables/useBoot.js）。
+   ============================================================ */
+
+.boot {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  /* 自身必须透明：劈开时靠两块挡板滑走露出页面，
+     如果这一层有不透明底色，挡板滑开了页面还是被它盖着 */
+  background: transparent;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  transition: opacity 0.42s ease;
+}
+
+.boot.done {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* --- B.0 劈开用的两块挡板 ---
+   它们就是转场的「底」，z-index 最低；网格/光环/标识都叠在它们上面。
+   劈开时挡板各自滑向左右，页面就从中间露出来。 */
+.boot-gate {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* 各占 50.4%，中间重叠一点，避免正中出现发丝缝 */
+  width: 50.4%;
+  background: var(--boot-void);
+  z-index: 0;
+  transition: transform 0.72s cubic-bezier(0.7, 0, 0.2, 1);
+}
+
+.boot-gate.left {
+  left: 0;
+}
+
+.boot-gate.right {
+  right: 0;
+}
+
+.boot.opening .boot-gate.left {
+  transform: translateX(-100%);
+}
+
+.boot.opening .boot-gate.right {
+  transform: translateX(100%);
+}
+
+/* --- B.1 透视网格地面 --- */
+.boot-grid {
+  position: absolute;
+  left: -50%;
+  right: -50%;
+  bottom: -10%;
+  height: 78%;
+  perspective: 340px;
+  perspective-origin: 50% 0%;
+  opacity: 0;
+  z-index: 1;
+  animation: bootGridIn 1.1s 0.1s cubic-bezier(0.22, 0.9, 0.24, 1) forwards;
+}
+
+.boot-grid i {
+  position: absolute;
+  inset: 0;
+  transform: rotateX(74deg);
+  transform-origin: 50% 0%;
+  background-image:
+    linear-gradient(to right, var(--boot-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--boot-grid) 1px, transparent 1px);
+  background-size: 46px 46px;
+  /* 越远越淡，避免网格糊成一片；底部保留实色让地面有落地感 */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 26%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 26%, #000 100%);
+  animation: bootGridScroll 5s linear infinite;
+}
+
+/* 地平线上一条青色亮线，把「地面」压住，画面立刻有纵深 */
+.boot-horizon {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 22%;
+  height: 1px;
+  z-index: 1;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--sde-accent) 65%, transparent) 30%,
+    color-mix(in srgb, var(--sde-accent) 90%, transparent) 50%,
+    color-mix(in srgb, var(--sde-accent) 65%, transparent) 70%,
+    transparent
+  );
+  box-shadow: 0 0 26px 3px color-mix(in srgb, var(--sde-accent) 35%, transparent);
+  opacity: 0;
+  animation: horizonIn 1.1s 0.45s ease-out forwards;
+}
+
+@keyframes horizonIn {
+  from {
+    opacity: 0;
+    transform: scaleX(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes bootGridIn {
+  from {
+    opacity: 0;
+    transform: translateY(60px) scaleY(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+@keyframes bootGridScroll {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 0 46px;
+  }
+}
+
+/* --- B.2 背景气辉：铺满整屏的一层弱光，让深底不至于纯黑 --- */
+.boot-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 42%, color-mix(in srgb, var(--sde-accent) 17%, transparent), transparent 70%),
+    radial-gradient(ellipse 40% 30% at 50% 78%, color-mix(in srgb, var(--sde-accent) 10%, transparent), transparent 70%),
+    radial-gradient(ellipse 90% 60% at 50% 115%, color-mix(in srgb, var(--sde-accent) 13%, transparent), transparent 72%);
+  opacity: 0;
+  animation: glowIn 1.4s 0.15s ease-out forwards;
+}
+
+@keyframes glowIn {
+  from {
+    opacity: 0;
+    transform: scale(1.08);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* --- 3.2b 中心光晕 --- */
+.boot-halo {
+  position: absolute;
+  width: 640px;
+  height: 640px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--boot-glow) 0%, transparent 62%);
+  filter: blur(46px);
+  opacity: 0;
+  z-index: 1;
+  animation: haloPulse 2.2s 0.2s ease-out forwards;
+}
+
+@keyframes haloPulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.45);
+  }
+  40% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  70% {
+    opacity: 0.32;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 0.12;
+    transform: scale(1.16);
+  }
+}
+
+/* --- B.3 同心光环（旋转） --- */
+.boot-rings {
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  opacity: 0;
+  animation: ringsIn 0.9s 0.25s ease-out forwards;
+}
+
+.boot-rings i {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--sde-accent) 30%, transparent);
+}
+
+/* 每圈不同的虚线与转速，形成「机械仪表」感 */
+.boot-rings i:nth-child(1) {
+  inset: 0;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--sde-accent) 22%, transparent);
+  animation: ringSpin 14s linear infinite;
+}
+.boot-rings i:nth-child(2) {
+  inset: 34px;
+  border-color: color-mix(in srgb, var(--sde-accent) 34%, transparent);
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+  animation: ringSpin 8s linear infinite reverse;
+}
+.boot-rings i:nth-child(3) {
+  inset: 74px;
+  border-color: color-mix(in srgb, var(--sde-accent) 18%, transparent);
+  border-style: dotted;
+  animation: ringSpin 22s linear infinite;
+}
+.boot-rings i:nth-child(4) {
+  inset: 112px;
+  border-color: color-mix(in srgb, var(--sde-accent) 42%, transparent);
+  border-left-color: transparent;
+  border-right-color: transparent;
+  animation: ringSpin 5.5s linear infinite reverse;
+}
+
+@keyframes ringsIn {
+  from {
+    opacity: 0;
+    transform: scale(0.7) rotate(-30deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes ringSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- B.4 中央内容（标识 + 标题 + 进度） --- */
+.boot-core {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: min(460px, 84vw);
+}
+
+.boot-mark {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  opacity: 0;
+  transform: scale(0.55) rotate(-14deg);
+  animation: markIn 0.85s 0.2s cubic-bezier(0.16, 1.3, 0.3, 1) forwards;
+}
+
+/* 标识：一本书的抽象轮廓，跟 favicon 同构 */
+.boot-mark svg {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.boot-mark .bm-fill {
+  fill: none;
+  stroke: var(--sde-accent);
+  stroke-width: 2.1;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  /* 描边画出来的效果：长度取个大于周长的值 */
+  stroke-dasharray: 260;
+  stroke-dashoffset: 260;
+  animation: markDraw 1.05s 0.3s ease-out forwards;
+}
+
+.boot-mark .bm-dot {
+  fill: var(--sde-accent-ink);
+  opacity: 0;
+  animation: markDot 0.5s 1.1s ease-out forwards;
+}
+
+/* 标识外的一圈扫光 */
+.boot-mark::after {
+  content: "";
+  position: absolute;
+  inset: -18px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    color-mix(in srgb, var(--sde-accent) 42%, transparent) 40deg,
+    transparent 90deg
+  );
+  -webkit-mask: radial-gradient(circle, transparent 58%, #000 60%, #000 100%);
+  mask: radial-gradient(circle, transparent 58%, #000 60%, #000 100%);
+  animation: markSweep 1.8s linear infinite;
+}
+
+@keyframes markIn {
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes markDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes markDot {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes markSweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 品牌名：逐字浮现 */
+.boot-word {
+  display: flex;
+  gap: 2px;
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  /* 让最后一个字的字距不撑出空白 */
+  margin-right: -0.26em;
+  color: var(--sde-text);
+  text-shadow: 0 0 26px color-mix(in srgb, var(--sde-accent) 45%, transparent);
+}
+
+.boot-word span {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(14px);
+  filter: blur(6px);
+  animation: wordIn 0.62s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes wordIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* 副标题 */
+.boot-sub {
+  margin-top: -12px;
+  font-size: 11.5px;
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: var(--sde-muted);
+  opacity: 0;
+  animation: fadeUp 0.7s 0.72s ease-out forwards;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 0.9;
+    transform: translateY(0);
+  }
+}
+
+/* --- B.5 进度条 --- */
+.boot-bar-wrap {
+  width: 100%;
+  opacity: 0;
+  animation: fadeUp 0.6s 0.8s ease-out forwards;
+}
+
+.boot-bar-track {
+  position: relative;
+  height: 2px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--sde-text) 10%, transparent);
+  overflow: hidden;
+}
+
+.boot-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 99px;
+  background: linear-gradient(90deg, transparent, var(--sde-accent) 18%, var(--sde-accent-ink) 82%, transparent);
+  box-shadow: 0 0 14px var(--boot-glow);
+  /* 0.85s 延时 + 1.2s 时长 = 2.05s 走满，和 JS 的 onFull 对齐。
+     曲线用「多段线性插值」而不是 cubic-bezier：
+     之前是 cubic-bezier + 55% 一个中间站，两者叠加会在 68% 附近
+     出现约 100ms 的视觉停顿（实测 65 → 68 → 68 → 73）。
+     分段点按速度递增再递减排布，全程单调无平台。 */
+  animation: barFill 1.2s 0.85s linear forwards;
+}
+
+/* 进度条头部的高光点 */
+.boot-bar-fill::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  transform: translate(50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--sde-accent) 0%, transparent 58%);
+  filter: blur(5px);
+}
+
+@keyframes barFill {
+  0% {
+    width: 0;
+  }
+  16% {
+    width: 20%;
+  }
+  36% {
+    width: 46%;
+  }
+  58% {
+    width: 70%;
+  }
+  78% {
+    width: 87%;
+  }
+  92% {
+    width: 96%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+/* 进度条上的流光 */
+.boot-bar-track::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.5),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: barSheen 1.4s 1.1s ease-in-out infinite;
+}
+
+@keyframes barSheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* 状态文案：换文字时做一次淡入 */
+.boot-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 11px;
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  color: var(--sde-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.boot-status .bs-text {
+  transition: opacity 0.16s ease;
+}
+
+.boot-status .bs-text.swap {
+  opacity: 0;
+}
+
+.boot-status .bs-pct {
+  color: var(--sde-accent);
+  font-weight: 650;
+}
+
+/* --- B.6 扫描线（横向扫过整个屏幕） --- */
+.boot-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--sde-accent) 70%, transparent),
+    transparent
+  );
+  opacity: 0;
+  filter: blur(0.4px);
+  animation: scanRun 1.5s 0.55s ease-in-out 2;
+}
+
+@keyframes scanRun {
+  0% {
+    top: 8%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  88% {
+    opacity: 0.9;
+  }
+  100% {
+    top: 92%;
+    opacity: 0;
+  }
+}
+
+/* --- B.7 收尾：光带劈开 --- */
+/* 挡板样式已提到 B.0（它们是最底层），这里只留中间那道亮线 */
+.boot-seam {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  z-index: 8;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--sde-accent-ink) 30%,
+    #fff 50%,
+    var(--sde-accent-ink) 70%,
+    transparent
+  );
+  box-shadow: 0 0 22px 4px var(--boot-glow);
+  opacity: 0;
+  transform: scaleY(0.2);
+}
+
+.boot.opening .boot-seam {
+  animation: seamFlash 0.86s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes seamFlash {
+  0% {
+    opacity: 0;
+    transform: scaleY(0.2);
+  }
+  22% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  70% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: scaleY(1);
+  }
+}
+
+/* 收尾时中央内容整体往上淡出，别跟页面内容打架 */
+.boot.opening .boot-core,
+.boot.opening .boot-grid,
+.boot.opening .boot-rings,
+.boot.opening .boot-halo,
+.boot.opening .boot-scan {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  opacity: 0;
+}
+
+.boot.opening .boot-core {
+  transform: translateY(-16px) scale(0.97);
+}
+
+/* 跳过提示 */
+.boot-skip {
+  position: absolute;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--sde-dim);
+  opacity: 0;
+  animation: fadeUp 0.6s 1.2s ease-out forwards;
+  pointer-events: none;
+}
+
+.boot.opening .boot-skip {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+/* ============================================================
+   C. 主页入场动画
+   ------------------------------------------------------------
+   方向按「外壳的形状」定，两轴严格正交：
+       顶栏  从左侧滑入（通栏横条，-100% 等于整屏宽）
+       右栏  从顶部落下（竖向条，-100% 等于整屏高）
+       左栏  从左侧滑入（默认宽度 0，展开 News 才看得见）
+       内容  由内向外逐层升起
+
+   再往内是对「排版节奏」的呼应：
+     顶栏标签从左往右、右栏图标从上往下、课表逐行、日程逐项、
+     学科卡逐张。整屏读下来是「横向 → 纵向 → 逐项」，
+     和实际看页面的视线路径一致，不会像一堆元素同时蹦出来。
+
+   关键设计约束（改布局时别踩）：
+     这些动画只碰 transform / opacity，绝不碰 width / height / 字号。
+     所以用户增删改课程、日程、学科时，文字不会因为动画中的
+     缩放或位移被挤压、裁切、错行 —— 渲染尺寸始终是最终尺寸。
+   ============================================================ */
+
+/* ============================================================
+   6.5 主页入场动画（衔接启动转场）
+   ------------------------------------------------------------
+   设计思路：
+     转场是「从中间劈开」，所以内容不该整块一起淡入 —— 那样劈开的
+     方向感就白做了。这里让每个区域各自从挡板滑走的方向展开：
+
+       顶栏     从左侧滑入（整条从屏幕左边缘推进来）
+       右栏     从顶部落下（整条从屏幕上边缘降下来）
+       内容区   由内向外逐个升起（translateY + 微缩放）
+       左栏     从左侧滑入（默认宽度为 0，展开 News 时才看得到）
+
+   再往下是对「排版节奏」的呼应：
+     顶栏标签从左往右依次亮起、右栏图标从上往下逐个弹出、
+     课表一行一行展开、日程一件一件落下、学科卡一张一张浮起。
+     这样整屏是「横向→纵向→逐项」的阅读顺序，和实际看页面的
+     视线路径一致，不会觉得是一堆元素同时蹦出来。
+
+   全部用 CSS animation + animation-delay 排时间轴，不用 JS 逐帧驱动，
+   这样在后台标签页被节流时也只是「晚一点出现」，不会卡死在中间态。
+   关键：delay 从 .app.is-booted（页面亮起，约 2.51s）开始算，
+   所以视觉上是「转场结束 → 界面从四个方向长出来」的连续动作。
+   ============================================================ */
+
+/* --- 6.5.1 顶栏：从左侧滑入 ---
+   顶栏是通栏横条，用 translateX(-100%) 等于「从屏幕左边缘外推出来」，
+   自身宽度就是位移量，起点完全在框外，不会露半截。 */
+@keyframes enterFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* --- 6.5.2 右栏：从顶部落下 ---
+   右栏是竖向条（74px 宽），从上方降下来，位移量等于自身高度。 */
+@keyframes enterFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- 6.5.3 左栏：从左侧滑入（与顶栏同向，保持外壳整体一致） --- */
+@keyframes enterSideLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* --- 6.5.4 内容板块：从下往上升起 ---
+   原来这里是 translateY(18px) scale(0.985)，那个 0.985 已经去掉了：
+   容器一缩放，里面的中文会被重新采样、发糊，中文字形密度高，0.985
+   的差异在 13px 字号上照样看得出来。纯位移一样有「升起」的手感，
+   但对文字零影响。 */
+@keyframes enterRise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- 6.5.5 外链图标：从上方落下（跟右栏同向，像从栏里顺次降下来） ---
+   同样去掉了 scale(0.82)。.rail-name 是 12px 中文，缩到 82% 会明显糊。 */
+@keyframes railDrop {
+  from {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- 6.5.6 顶栏标签：从左往右依次亮起（跟顶栏同向） --- */
+@keyframes tabIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* --- 6.5.7 课表：每一行从左侧展开 --- */
+@keyframes rowIn {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* --- 6.5.8 日程：每一项从上往下落 --- */
+@keyframes itemDrop {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 统一手感：位移类用带回弹的曲线，透明度用短一点的线性感 */
+:root {
+  --enter-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --enter-fast: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ============================================================
+   7. 状态机：两个独立开关，别合并
+   ------------------------------------------------------------
+   .is-booted   页面已亮（转场结束，界面可见）
+   .is-entering 入场动画正在跑（约 1.35s 后由 JS 摘掉）
+
+   为什么必须分成两个：
+     入场动画用的是 animation-fill-mode: both，跑完之后元素被永久锁在
+     末帧状态。如果这套 animation 一直挂在元素上，用户新增一门课、一条
+     日程、一个学科时，新元素会先被锁在 opacity: 0，然后按 animation-delay
+     干等 —— 第 6 个学科要等 0.835s 才可见。这就是「改数据后界面异常」。
+     摘掉 is-entering 后 animation 整条规则消失，新元素直接是最终态。
+   ============================================================ */
+
+/* 入场期间才提升合成层。常驻会让 30 行课表都留着独立图层，
+   表格在 table-layout: fixed 下容易和表头列宽对不上，还占显存。 */
+.app.is-entering .topbar,
+.app.is-entering .rail,
+.app.is-entering .sidebar,
+.app.is-entering .hero,
+.app.is-entering .row-top,
+.app.is-entering .row-mid,
+.app.is-entering .subjects,
+.app.is-entering .rail-item,
+.app.is-entering .tabs .tab,
+.app.is-entering .tt tbody tr,
+.app.is-entering .tl-item,
+.app.is-entering .subj-card {
+  will-change: transform, opacity;
+}
+
+/* 亮起之前先藏住。只在 is-booted 缺席时生效，
+   所以不存在「亮起后还有残留隐藏规则」的问题。 */
+.app:not(.is-booted) .topbar,
+.app:not(.is-booted) .rail,
+.app:not(.is-booted) .hero,
+.app:not(.is-booted) .row-top,
+.app:not(.is-booted) .row-mid,
+.app:not(.is-booted) .subjects,
+.app:not(.is-booted) .rail-item,
+.app:not(.is-booted) .tabs .tab,
+.app:not(.is-booted) .tt tbody tr,
+.app:not(.is-booted) .tl-item,
+.app:not(.is-booted) .subj-card {
+  opacity: 0;
+}
+
+/* --- 入场时间轴 ---
+   时间点相对「页面亮起」（.is-booted 加上去的瞬间）：
+     0.00  顶栏从左侧滑入
+     0.05  顶栏标签从左往右依次亮起
+     0.08  右栏从顶部落下
+     0.19  右栏图标从上往下逐个落下
+     0.20  标题行升起
+     0.27  名言 + 天数
+     0.34  课表 + 日程（卡片本身）
+     0.42  课表逐行展开 / 日程逐项落下
+     0.50  学科网格
+     0.56  学科卡逐张浮起
+     1.30  全部落定，JS 摘掉 .is-entering
+*/
+.app.is-entering .topbar {
+  animation: enterFromLeft 0.66s var(--enter-ease) 0s both;
+}
+
+.app.is-entering .rail {
+  animation: enterFromTop 0.7s var(--enter-ease) 0.08s both;
+}
+
+/* 左栏宽度是 0，位移看不出来；只有 News 展开时才有内容可看，
+   跟顶栏同步即可，展开时不会有额外延迟感 */
+.app.is-entering .sidebar {
+  animation: enterSideLeft 0.5s var(--enter-ease) 0s both;
+}
+
+.app.is-entering .hero {
+  animation: enterRise 0.58s var(--enter-ease) 0.2s both;
+}
+
+.app.is-entering .row-top {
+  animation: enterRise 0.58s var(--enter-ease) 0.27s both;
+}
+
+.app.is-entering .row-mid {
+  animation: enterRise 0.58s var(--enter-ease) 0.34s both;
+}
+
+.app.is-entering .subjects {
+  animation: enterRise 0.58s var(--enter-ease) 0.5s both;
+}
+
+/* --- 错峰延迟：用 nth-child，不用 JS 设变量 ---
+   原型里是 App.vue 用 JS 给每个元素塞 --ti / --ri / --tr / --li / --si，
+   但主应用里课表行在 TimetableGrid.vue、日程项在 ScheduleTimeline.vue、
+   学科卡在 Home.vue、图标在 RightRail.vue —— App.vue 根本拿不到这些节点。
+   改 nth-child 就不依赖任何 JS，数据怎么变都自己算得出来。
+
+   每个列表封顶到第 6 个，之后一律用同一个延迟：
+   不然学科攒到 20 个，第 20 张要等到 0.56 + 19 * 0.055 = 1.6s 才出来。 */
+
+/* 顶栏标签：主页 / 课表 / 学科，从左往右依次亮起 */
+.app.is-entering .tabs .tab {
+  animation: tabIn 0.44s var(--enter-fast) both;
+}
+.app.is-entering .tabs .tab:nth-child(1) { animation-delay: 0.05s; }
+.app.is-entering .tabs .tab:nth-child(2) { animation-delay: 0.096s; }
+.app.is-entering .tabs .tab:nth-child(3) { animation-delay: 0.142s; }
+.app.is-entering .tabs .tab:nth-child(4) { animation-delay: 0.188s; }
+.app.is-entering .tabs .tab:nth-child(5) { animation-delay: 0.234s; }
+.app.is-entering .tabs .tab:nth-child(6) { animation-delay: 0.28s; }
+.app.is-entering .tabs .tab:nth-child(n + 7) { animation-delay: 0.28s; }
+
+/* 右栏图标：从上往下逐个落下 */
+.app.is-entering .rail-item {
+  animation: railDrop 0.46s var(--enter-fast) both;
+}
+.app.is-entering .rail-item:nth-child(1) { animation-delay: 0.19s; }
+.app.is-entering .rail-item:nth-child(2) { animation-delay: 0.23s; }
+.app.is-entering .rail-item:nth-child(3) { animation-delay: 0.27s; }
+.app.is-entering .rail-item:nth-child(4) { animation-delay: 0.31s; }
+.app.is-entering .rail-item:nth-child(5) { animation-delay: 0.35s; }
+.app.is-entering .rail-item:nth-child(6) { animation-delay: 0.39s; }
+.app.is-entering .rail-item:nth-child(n + 7) { animation-delay: 0.39s; }
+
+/* 课表：表头先定住，然后每行错开 52ms 从左侧滑进来 */
+.app.is-entering .tt tbody tr {
+  animation: rowIn 0.42s var(--enter-fast) both;
+}
+.app.is-entering .tt tbody tr:nth-child(1) { animation-delay: 0.42s; }
+.app.is-entering .tt tbody tr:nth-child(2) { animation-delay: 0.472s; }
+.app.is-entering .tt tbody tr:nth-child(3) { animation-delay: 0.524s; }
+.app.is-entering .tt tbody tr:nth-child(4) { animation-delay: 0.576s; }
+.app.is-entering .tt tbody tr:nth-child(5) { animation-delay: 0.628s; }
+.app.is-entering .tt tbody tr:nth-child(6) { animation-delay: 0.68s; }
+.app.is-entering .tt tbody tr:nth-child(n + 7) { animation-delay: 0.68s; }
+
+/* 日程：每一项错开 55ms 落下。
+   nth-child 是按「组内」算的，所以每个日期组都会各自从 0.42s 起跳，
+   视觉上是「各组一起铺开」，比全局一个长串更整齐，也不会越往后越拖。 */
+.app.is-entering .tl-item {
+  animation: itemDrop 0.4s var(--enter-fast) both;
+}
+.app.is-entering .tl-item:nth-child(1) { animation-delay: 0.42s; }
+.app.is-entering .tl-item:nth-child(2) { animation-delay: 0.475s; }
+.app.is-entering .tl-item:nth-child(3) { animation-delay: 0.53s; }
+.app.is-entering .tl-item:nth-child(4) { animation-delay: 0.585s; }
+.app.is-entering .tl-item:nth-child(5) { animation-delay: 0.64s; }
+.app.is-entering .tl-item:nth-child(6) { animation-delay: 0.695s; }
+.app.is-entering .tl-item:nth-child(n + 7) { animation-delay: 0.695s; }
+
+/* 学科卡：逐张浮起 */
+.app.is-entering .subj-card {
+  animation: enterRise 0.46s var(--enter-ease) both;
+}
+.app.is-entering .subj-card:nth-child(1) { animation-delay: 0.56s; }
+.app.is-entering .subj-card:nth-child(2) { animation-delay: 0.615s; }
+.app.is-entering .subj-card:nth-child(3) { animation-delay: 0.67s; }
+.app.is-entering .subj-card:nth-child(4) { animation-delay: 0.725s; }
+.app.is-entering .subj-card:nth-child(5) { animation-delay: 0.78s; }
+.app.is-entering .subj-card:nth-child(6) { animation-delay: 0.835s; }
+.app.is-entering .subj-card:nth-child(n + 7) { animation-delay: 0.835s; }
+
+/* 尊重系统设置：关掉动效时直接显示最终态 */
+@media (prefers-reduced-motion: reduce) {
+  .app.is-entering .topbar,
+  .app.is-entering .rail,
+  .app.is-entering .sidebar,
+  .app.is-entering .hero,
+  .app.is-entering .row-top,
+  .app.is-entering .row-mid,
+  .app.is-entering .subjects,
+  .app.is-entering .rail-item,
+  .app.is-entering .tabs .tab,
+  .app.is-entering .tt tbody tr,
+  .app.is-entering .tl-item,
+  .app.is-entering .subj-card {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

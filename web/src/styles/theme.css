@@ -1,0 +1,228 @@
+/* 全局主题：配色对齐 AIHOT（青色 accent），默认深色，可用 html.light 切到浅色 */
+:root,
+html.dark {
+  color-scheme: dark;
+  --sde-bg: #13191c;
+  --sde-surface: #1a2226;
+  --sde-surface-2: #1d272b;
+  --sde-surface-3: #202a2f;
+  --sde-border: rgba(255, 255, 255, 0.08);
+  --sde-border-strong: rgba(255, 255, 255, 0.12);
+  --sde-text: #e7eceb;
+  --sde-text-2: #d2dada;
+  --sde-muted: #a5b0b3;
+  --sde-dim: #89979d;
+  --sde-accent: #12ccd8;
+  --sde-accent-ink: #2ce2e8;
+  --sde-accent-soft: rgba(18, 204, 216, 0.12);
+  --sde-danger: #d86a52;
+  --sde-warn: #d3b26a;
+  --sde-ok: #5fc79a;
+  --sde-radius: 14px;
+  --sde-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --sde-scrollbar: rgba(255, 255, 255, 0.14);
+  --sde-scrollbar-hover: rgba(255, 255, 255, 0.22);
+}
+
+/* 浅色：暖白底 + 同色系但加深的 accent，保证对比度 */
+html.light {
+  color-scheme: light;
+  --sde-bg: #f5f6f6;
+  --sde-surface: #ffffff;
+  --sde-surface-2: #f2f4f5;
+  --sde-surface-3: #e8ecee;
+  --sde-border: rgba(18, 28, 34, 0.1);
+  --sde-border-strong: rgba(18, 28, 34, 0.18);
+  --sde-text: #16212a;
+  --sde-text-2: #33414c;
+  --sde-muted: #64727c;
+  --sde-dim: #7d8b95;
+  --sde-accent: #0e94a0;
+  --sde-accent-ink: #0b7f8a;
+  --sde-accent-soft: rgba(14, 148, 160, 0.1);
+  --sde-danger: #c1513a;
+  --sde-warn: #99761f;
+  --sde-ok: #2c8f68;
+  --sde-shadow: 0 10px 30px rgba(16, 32, 40, 0.12);
+  --sde-scrollbar: rgba(18, 28, 34, 0.16);
+  --sde-scrollbar-hover: rgba(18, 28, 34, 0.26);
+}
+
+html.dark {
+  --el-color-primary: #12ccd8;
+  --el-color-primary-light-3: #3ddbe4;
+  --el-color-primary-light-5: #6ee6ec;
+  --el-color-primary-light-7: #0a9fa9;
+  --el-color-primary-light-9: rgba(18, 204, 216, 0.18);
+  --el-color-danger: #d86a52;
+  --el-color-success: #5fc79a;
+  --el-color-warning: #d3b26a;
+  --el-bg-color: #1a2226;
+  --el-bg-color-page: #13191c;
+  --el-bg-color-overlay: #202a2f;
+  --el-fill-color-blank: #1a2226;
+  --el-fill-color-light: #1d272b;
+  --el-fill-color: #1d272b;
+  --el-fill-color-dark: #202a2f;
+  --el-border-color: rgba(255, 255, 255, 0.1);
+  --el-border-color-light: rgba(255, 255, 255, 0.09);
+  --el-border-color-lighter: rgba(255, 255, 255, 0.07);
+  --el-text-color-primary: #e7eceb;
+  --el-text-color-regular: #d2dada;
+  --el-text-color-secondary: #a5b0b3;
+  --el-text-color-placeholder: #89979d;
+  --el-mask-color: rgba(6, 10, 12, 0.72);
+  --el-box-shadow-light: 0 8px 26px rgba(0, 0, 0, 0.45);
+}
+
+html.light {
+  --el-color-primary: #0e94a0;
+  --el-color-primary-light-3: #3aacb6;
+  --el-color-primary-light-5: #6ec2ca;
+  --el-color-primary-light-7: #a9dade;
+  --el-color-primary-light-8: #cbe9ec;
+  --el-color-primary-light-9: #e6f4f5;
+  --el-color-primary-dark-2: #0b7f8a;
+  --el-color-danger: #c1513a;
+  --el-color-success: #2c8f68;
+  --el-color-warning: #99761f;
+  --el-bg-color: #ffffff;
+  --el-bg-color-page: #f5f6f6;
+  --el-bg-color-overlay: #ffffff;
+  --el-fill-color-blank: #ffffff;
+  --el-fill-color-light: #f2f4f5;
+  --el-fill-color: #eef1f2;
+  --el-fill-color-dark: #e8ecee;
+  --el-border-color: rgba(18, 28, 34, 0.14);
+  --el-border-color-light: rgba(18, 28, 34, 0.11);
+  --el-border-color-lighter: rgba(18, 28, 34, 0.08);
+  --el-text-color-primary: #16212a;
+  --el-text-color-regular: #33414c;
+  --el-text-color-secondary: #64727c;
+  --el-text-color-placeholder: #8b979f;
+  --el-mask-color: rgba(240, 243, 244, 0.75);
+  --el-box-shadow-light: 0 8px 26px rgba(16, 32, 40, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--sde-bg);
+  color: var(--sde-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 15px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--sde-scrollbar);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sde-scrollbar-hover);
+}
+
+/* 通用卡片 */
+.sde-card {
+  background: var(--sde-surface);
+  border: 1px solid var(--sde-border);
+  border-radius: var(--sde-radius);
+  padding: 20px;
+}
+
+.sde-card-title {
+  margin: 0 0 4px;
+  font-size: 15.5px;
+  font-weight: 650;
+}
+
+.sde-hint {
+  color: var(--sde-muted);
+  font-size: 13px;
+  margin: 0 0 14px;
+}
+
+.sde-empty {
+  color: var(--sde-muted);
+  font-size: 13.5px;
+  padding: 20px 0;
+  text-align: center;
+}
+
+/* 面板内的子标签（未完成 / 已完成 这类分段） */
+.sde-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.sde-tabs button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--sde-muted);
+  font-size: 12.5px;
+  padding: 3px 11px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.sde-tabs button:hover {
+  color: var(--sde-text);
+  background: var(--sde-surface-2);
+}
+
+.sde-tabs button b {
+  color: var(--sde-warn);
+  font-weight: 600;
+  margin-left: 2px;
+}
+
+.sde-tabs button.on {
+  background: var(--sde-surface-2);
+  border-color: var(--sde-border);
+  color: var(--sde-text);
+  font-weight: 600;
+}
+
+/* Element Plus 微调，表格与弹窗更贴合深色 */
+.el-button {
+  font-size: 13.5px;
+}
+.el-input__inner,
+.el-textarea__inner {
+  font-size: 13.5px;
+}
+.el-table {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-border-color: var(--sde-border);
+  font-size: 13.5px;
+}
+.el-dialog {
+  border-radius: 16px;
+}
+.el-dialog__title {
+  font-size: 15.5px;
+}

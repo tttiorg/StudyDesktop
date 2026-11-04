@@ -1,0 +1,14 @@
+{
+  "name": "学习桌面",
+  "short_name": "学习桌面",
+  "description": "课表、学科、成绩、笔记与复习一体的本地学习工作台",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#13191c",
+  "theme_color": "#13191c",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
